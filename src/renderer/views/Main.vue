@@ -13,6 +13,8 @@
         <ul class="anslist">
             <li v-for="(ans, index) in answers" :key="index">{{ ans }} 
               <span v-if="matchNum" :style="{backgroundColor: colors[index]}">{{matchNum[ans.trim()]}}</span>
+              
+              <span class="searchnum">({{searchnum[ans.trim()]}})</span>
             </li>
         </ul>
       </div>
@@ -32,11 +34,12 @@ export default {
       answers: [],
       auto: false,
       reqnum: 0,
-      url:'',
+      url: '',
       baiduSearch: 'https://www.baidu.com/s?ie=UTF-8&wd=',
       preload: `file://${path.join(__static, './highlight.js')}`,
       matchNum: null,
-      colors: ['yellow', 'LightSkyBlue', 'Pink', 'green']
+      colors: ['yellow', 'LightSkyBlue', 'Pink', 'green'],
+      searchnum: {}
     }
   },
   methods: {
@@ -49,37 +52,41 @@ export default {
       this.$electron.ipcRenderer.send('render-send-auto', this.auto)
     },
     test() {
-      this.url='https://www.baidu.com'
+      this.url = 'https://www.baidu.com'
     }
   },
   created() {
     this.$electron.ipcRenderer.on('win-send-question', (event, res) => {
-
       this.reqnum = res.reqnum
 
       if (res.data.data && res.data.data.event) {
-
         let data = res.data.data
-  
+
         this.title = data.event.desc
         this.answers = JSON.parse(data.event.options)
-  
-        this.url = this.baiduSearch + this.title
+
+        this.url = this.baiduSearch + this.title.replace(/^\d+\./,'').trim()
       }
+    })
+
+    this.$electron.ipcRenderer.on('win-send-searchnum', (event, res) => {
+      this.searchnum = Object.assign({}, this.searchnum, res)
     })
   },
   mounted() {
     console.log(`file://${path.join(__static, './highlight.js')}`)
     const webview = document.querySelector('webview')
     webview.addEventListener('dom-ready', () => {
-       console.log('dom-ready')
-       let js = `highlight(["${this.answers.join('","')}"])`
-       console.log(js)
-       webview.executeJavaScript(js,false,(res)=>{
-         this.matchNum = res
-       })
+      console.log('dom-ready')
+      let js = `window.highlight(["${this.answers.join('","')}"])`
+      console.log(js)
+      webview.executeJavaScript(js, false, res => {
+        this.matchNum = res
+      })
+      let css=""
+      webview.insertCSS(css)
+      this.$electron.ipcRenderer.send('render-dom-ready')
     })
-
   }
 }
 </script>
@@ -89,9 +96,14 @@ export default {
   height: 100%;
 }
 .header {
-  height: 55px;
+  // height: 10%;
+  position: absolute;
+  width: 100%;
+  height: 80px;
   border-bottom: 1px solid #585c64;
+  box-sizing: border-box;
   display: flex;
+  align-items: center;
 
   .oper {
     width: 140px;
@@ -103,7 +115,11 @@ export default {
 }
 .content {
   display: flex;
-  height: 100%;
+  // height: 100%;
+  position: absolute;
+  top: 80px;
+  bottom: 0;
+  width: 100%
 }
 .left {
   width: 35%;
@@ -116,5 +132,9 @@ export default {
   padding: 30px;
   list-style-type: decimal;
   font-size: 30px;
+}
+.searchnum {
+  margin-left: 10px;
+  font-size: 21px;
 }
 </style>

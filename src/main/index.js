@@ -1,4 +1,4 @@
-import {app, BrowserWindow, ipcMain, net} from 'electron'
+import {app, BrowserWindow, ipcMain, net, webContents} from 'electron'
 
 /**
  * Set `__static` path to static files in production
@@ -47,6 +47,8 @@ app.on('activate', () => {
   }
 })
 
+
+
 /**
  * Auto Updater
  *
@@ -66,14 +68,12 @@ app.on('ready', () => {
   if (process.env.NODE_ENV === 'production') autoUpdater.checkForUpdates()
 })
  */
-
-let reqnum = 0
-ipcMain.on('render-send-get', (event, arg) => {
-  console.log(arg)
-  refreshQues()
-})
+let list = []
+let reqnum = 0, curchunk = null
+let interval = null
 
 let questionUrl = 'http://www.mockhttp.cn/mock/ipengyl6'
+// let questionUrl = 'http://htpmsg.jiecaojingxuan.com/msg/current'
 function refreshQues() {
   console.log('refreshQues')
   const request = net.request(questionUrl)
@@ -81,21 +81,60 @@ function refreshQues() {
     console.log(`STATUS: ${response.statusCode}`)
     response.on('data', chunk => {
       // console.log(`BODY: ${chunk}`)
-      chunk = JSON.parse(chunk.toString())
-      console.log(chunk)
-      reqnum ++
-      mainWindow.webContents.send('win-send-question', {data: chunk, reqnum: reqnum})
+      try {
+        
+        curchunk = chunk = JSON.parse(chunk.toString())
+        console.log(chunk)
+        reqnum ++
+        mainWindow.webContents.send('win-send-question', {data: chunk, reqnum: reqnum})
+
+      } catch (error) {
+        
+      }
     })
   })
   request.end()
 }
 
-let interval = null
+ipcMain.on('render-send-get', (event, arg) => {
+  refreshQues()
+})
+
 ipcMain.on('render-send-auto', (event, auto) => {
-  console.log(auto)
   if (auto) {
     interval = setInterval(refreshQues, 1000)
   }else {
     clearInterval(interval)
   }
 })
+
+ipcMain.on('render-dom-ready', (event, arg) => {
+  if (curchunk && curchunk.data && curchunk.data.event && curchunk.data.event.options) {
+    let data = curchunk.data
+    let title = data.event.desc.replace(/^\d+\./,'').trim()
+    let answers = JSON.parse(data.event.options)
+    answers.forEach((ans, i)=> {
+      let temp = answers.slice()
+      temp.splice(i, 1)
+      
+      let url = `https://www.baidu.com/s?ie=UTF-8&wd=${title} "${ans.trim()}" ${temp.map(v=> ' -'+v).join()}`
+      console.log(url)
+      const request = net.request(url)
+      request.on('response', response => {
+        console.log(`STATUS: ${response.statusCode}`)
+        response.on('data', chunk => {
+          // console.log(`BODY: ${chunk}`)
+          // curchunk = chunk = JSON.parse(chunk.toString())
+          let matchs = chunk.toString().match(/百度为您找到相关结果约([0-9|,]*)个/)
+          if(matchs && matchs.length >= 2) {
+            console.log({[ans.trim()]: matchs[1]})
+            mainWindow.webContents.send('win-send-searchnum', {[ans.trim()]: matchs[1]})
+          }
+          
+        })
+      })
+      request.end()
+    })
+  }
+})
+
