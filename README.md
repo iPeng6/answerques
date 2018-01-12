@@ -8,10 +8,19 @@
 # install dependencies
 npm install
 
+如果长时间下载不了
+切换淘宝镜像，安装cnpm 
+npm install -g cnpm --registry=https://registry.npm.taobao.org
+
+cnpm install
+
 # serve with hot reload at localhost:9080
+运行启动界面
 npm run dev
 
+
 # build electron application for production
+打包，生成可执行文件，有源码就不需要build了
 npm run build
 
 

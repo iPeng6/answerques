@@ -10,13 +10,16 @@
     </div>
     <div class="content">
       <div class="left">
-        <ul class="anslist">
-            <li v-for="(ans, index) in answers" :key="index">{{ ans }} 
-              <span v-if="matchNum" :style="{backgroundColor: colors[index]}">{{matchNum[ans.trim()]}}</span>
-              
-              <span class="searchnum">({{searchnum[ans.trim()]}})</span>
-            </li>
-        </ul>
+
+        <table class="anslist">
+          <tr v-for="(ans, index) in answers" :key="index">
+            <td>{{index+1}}. </td>
+            <td>{{ ans }} </td>
+            <td><span v-if="matchNum" :style="{backgroundColor: colors[index]}">{{matchNum[ans.trim()]}}</span></td>
+            <td><span class="searchnum">({{searchnum[ans.trim()]}})</span></td>
+            <td><span v-if="airesult" class="airesult">({{airesult[index]}})</span></td>
+          </tr>
+        </table>
       </div>
       <div class="right">
         <webview id="wbview" :src="url" style="width:100%;height:100%;" :preload="preload"></webview>
@@ -39,7 +42,8 @@ export default {
       preload: `file://${path.join(__static, './highlight.js')}`,
       matchNum: null,
       colors: ['yellow', 'LightSkyBlue', 'Pink', 'green'],
-      searchnum: {}
+      searchnum: {},
+      airesult: null
     }
   },
   methods: {
@@ -72,6 +76,10 @@ export default {
     this.$electron.ipcRenderer.on('win-send-searchnum', (event, res) => {
       this.searchnum = Object.assign({}, this.searchnum, res)
     })
+
+    this.$electron.ipcRenderer.on('win-send-airesult', (event, res) => {
+      this.airesult = JSON.parse(res).data
+    })
   },
   mounted() {
     console.log(`file://${path.join(__static, './highlight.js')}`)
@@ -79,14 +87,16 @@ export default {
     webview.addEventListener('dom-ready', () => {
       console.log('dom-ready')
       let js = `window.highlight(["${this.answers.join('","')}"])`
-      console.log(js)
       webview.executeJavaScript(js, false, res => {
         this.matchNum = res
       })
       let css=""
       webview.insertCSS(css)
       this.$electron.ipcRenderer.send('render-dom-ready')
+
+      // webview.openDevTools() // webview的调试控制台
     })
+
   }
 }
 </script>
@@ -111,6 +121,7 @@ export default {
   .title {
     flex: 1;
     font-size: 35px;
+    padding-left: 18px;
   }
 }
 .content {
@@ -122,14 +133,15 @@ export default {
   width: 100%
 }
 .left {
-  width: 35%;
+  width: 40%;
   border-right: 1px solid #585c64;
 }
 .right {
   width: 100%;
 }
 .anslist {
-  padding: 30px;
+  margin: 18px 0 0 18px;
+  padding: 0;
   list-style-type: decimal;
   font-size: 30px;
 }
