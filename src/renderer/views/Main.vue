@@ -16,7 +16,8 @@
             <td>{{index+1}}. </td>
             <td>{{ ans }} </td>
             <td><span v-if="matchNum" :style="{backgroundColor: colors[index]}">{{matchNum[ans.trim()]}}</span></td>
-            <td><span class="searchnum">({{searchnum[ans.trim()]}})</span></td>
+            <!-- <td><span v-if="searchNum" class="searchnum">({{searchNum[ans.trim()]}})</span></td> -->
+            <td><span v-if="percent" class="searchnum">({{(percent[ans.trim()]*100).toFixed(2)}})%</span></td> 
             <td><span v-if="airesult" class="airesult">({{airesult[index]}})</span></td>
           </tr>
         </table>
@@ -42,8 +43,9 @@ export default {
       preload: `file://${path.join(__static, './highlight.js')}`,
       matchNum: null,
       colors: ['yellow', 'LightSkyBlue', 'Pink', 'green'],
-      searchnum: {},
-      airesult: null
+      searchNum: null,
+      airesult: null,
+      percent: null
     }
   },
   methods: {
@@ -57,6 +59,27 @@ export default {
     },
     test() {
       this.url = 'https://www.baidu.com'
+    },
+    getQN(str) {
+      let matchs = str.match(/百度为您找到相关结果约([0-9|,]*)个/)
+      if (matchs && matchs.length >= 2) {
+        return parseInt(matchs[1].replace(/,/gi, ''))
+      }
+      return 0
+    },
+    accv() {
+      let summatch = 0, sumsearch = 0
+      if(!this.matchNum) return
+      summatch = Object.values(this.matchNum).reduce((m,n)=> m+n)
+      sumsearch = Object.values(this.searchNum).reduce((m,n)=> m+n)
+
+      let percent = {}
+      for (let key in this.matchNum) { 
+        percent[key] = (this.matchNum[key] / summatch + this.searchNum[key] / sumsearch ) / 2
+      }
+
+      console.log(percent)
+      return percent
     }
   },
   created() {
@@ -69,12 +92,16 @@ export default {
         this.title = data.event.desc
         this.answers = JSON.parse(data.event.options)
 
-        this.url = this.baiduSearch + this.title.replace(/^\d+\./,'').trim()
+        this.url = this.baiduSearch + this.title.replace(/^\d+\./,'').replace(/\?|？/ig,'').trim()
       }
     })
 
     this.$electron.ipcRenderer.on('win-send-searchnum', (event, res) => {
-      this.searchnum = Object.assign({}, this.searchnum, res)
+      this.searchNum = Object.assign({}, this.searchNum||{}, res)
+
+      if (Object.keys(this.searchNum).length === this.answers.length && this.answers.length !=0) {
+        this.percent = this.accv()
+      }
     })
 
     this.$electron.ipcRenderer.on('win-send-airesult', (event, res) => {
@@ -92,8 +119,14 @@ export default {
       })
       let css=""
       webview.insertCSS(css)
-      this.$electron.ipcRenderer.send('render-dom-ready')
 
+      let curqn = 0 // 获取当前title对应的搜索数量
+      webview.executeJavaScript('document.body.innerText', false, res => {
+        curqn = this.getQN(res)
+        console.log(curqn)
+        this.$electron.ipcRenderer.send('render-dom-ready',curqn)
+      })
+      this.searchNum = null
       // webview.openDevTools() // webview的调试控制台
     })
 

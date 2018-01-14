@@ -1,5 +1,7 @@
-import { app, BrowserWindow, ipcMain, net, webContents } from 'electron'
-
+import { app, BrowserWindow, ipcMain, net } from 'electron'
+import Api from './api.js'
+import { error } from 'util';
+import { resolve } from 'url';
 /**
  * Set `__static` path to static files in production
  * https://simulatedgreg.gitbooks.io/electron-vue/content/en/using-static-assets.html
@@ -66,6 +68,8 @@ app.on('ready', () => {
 
 let reqnum = 0, curquestion = null
 let interval = null
+let api = new Api()
+let curqn = 0
 
 let questionUrl = 'http://www.mockhttp.cn/mock/ipengyl6'
 // let questionUrl = 'http://htpmsg.jiecaojingxuan.com/msg/current'
@@ -73,27 +77,24 @@ let questionUrl = 'http://www.mockhttp.cn/mock/ipengyl6'
 // 刷新题库 获取到题目 通知给页面
 function refreshQues() {
   console.log('refreshQues')
-  const request = net.request(questionUrl)
-  request.on('response', response => {
-    console.log(`STATUS: ${response.statusCode}`)
-    let body = '';
-    response.on('data', chunk => {
-      body += chunk    
-    })
-    response.on('end', () => {
-      
+  api
+    .query(questionUrl)
+    .then(res => {
       try {
-        curquestion = JSON.parse(body.toString())
-        reqnum++
-        mainWindow.webContents.send('win-send-question', { data: curquestion, reqnum: reqnum })
+        curquestion = JSON.parse(res)
+        console.log(curquestion)
+        mainWindow.webContents.send('win-send-question', {
+          data: curquestion,
+          reqnum: api.reqnum
+        })
       } catch (error) {}
     })
-  })
-  request.end()
+    .catch(error => {})
+  
 }
 
 // 监听页面 获取题目 事件
-ipcMain.on('render-send-get', (event, arg) => {
+ipcMain.on('render-send-get', () => {
   refreshQues()
 })
 
@@ -108,34 +109,49 @@ ipcMain.on('render-send-auto', (event, auto) => {
 
 // 监听webview页面dom完成事件，为了不阻塞首屏搜索当dom好了 再去并发搜索题目 答案匹配度
 //    https://www.baidu.com/s?ie=UTF-8&wd=title "A" -B -C 
-ipcMain.on('render-dom-ready', (event, arg) => {
+
+function getQN(str) {
+  let matchs = str.match(/百度为您找到相关结果约([0-9|,]*)个/)
+
+  if (matchs && matchs.length >= 2) {
+    return parseInt(matchs[1].replace(/,/gi, ''))
+  }
+  return 0
+}
+
+function requestQN(url) {
+  let api = new Api()
+  return new Promise((resolve, reject)=> {
+    api.query(url).then(res=>{
+      resolve(getQN(res))
+    }).catch(error=>{
+      reject(error)
+    })
+  })
+}
+
+ipcMain.on('render-dom-ready', (event, qn) => {
+  curqn = qn
+  console.log('main-qn',qn)
   if (curquestion && curquestion.data && curquestion.data.event && curquestion.data.event.options) {
     let data = curquestion.data
-    let title = data.event.desc.replace(/^\d+\./, '').trim()
+    let title = data.event.desc.replace(/^\d+\./, '').trim().replace(/\?/ig, '')
     let answers = JSON.parse(data.event.options)
+
     answers.forEach((ans, i) => {
       let temp = answers.slice()
       temp.splice(i, 1)
+      ans = ans.trim()
 
-      let url = `https://www.baidu.com/s?ie=UTF-8&wd=${title} "${ans.trim()}" ${temp.map(v => ' -' + v).join()}`
- 
-      const request = net.request(url)
-      request.on('response', response => {
-        console.log(`STATUS: ${response.statusCode}`)
-        let body = '';
-        response.on('data', chunk => {
-          body += chunk    
-        })
-        response.on('end', () => {
-
-          let matchs = body.toString().match(/百度为您找到相关结果约([0-9|,]*)个/)
-          if (matchs && matchs.length >= 2) {
-            console.log({ [ans.trim()]: matchs[1] })
-            mainWindow.webContents.send('win-send-searchnum', { [ans.trim()]: matchs[1] })
-          }
+      // let url = `https://www.baidu.com/s?ie=UTF-8&wd=${title} "${ans.trim()}" ${temp.map(v => ' -' + v).join()}`
+      let url = `https://www.baidu.com/s?ie=UTF-8&wd=${title} -${ans}`
+      console.log(url)
+      requestQN(url).then(num=>{
+        console.log({[ans]: num})
+        mainWindow.webContents.send('win-send-searchnum', {
+          [ans]: curqn - num
         })
       })
-      request.end()
     })
   }
 })
