@@ -1,7 +1,12 @@
 import { app, BrowserWindow, ipcMain, net } from 'electron'
+import path from 'path'
+import fs from 'fs'
 import Api from './api.js'
 import { error } from 'util';
 import { resolve } from 'url';
+
+import Tesseract from 'tesseract.js'
+
 /**
  * Set `__static` path to static files in production
  * https://simulatedgreg.gitbooks.io/electron-vue/content/en/using-static-assets.html
@@ -155,3 +160,19 @@ ipcMain.on('render-dom-ready', (event, qn) => {
     })
   }
 })
+
+
+// const imgpath = `${path.join(__static, './1.jpeg')}`
+const image = path.resolve(__dirname, '1.jpeg')
+
+Tesseract.recognize(image)
+  .then(data => {
+    console.log('then\n', data.text)
+  })
+  .catch(err => {
+    console.log('catch\n', err)
+  })
+  .finally(e => {
+    console.log('finally\n')
+    process.exit()
+  })
